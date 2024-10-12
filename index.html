@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-time Audio Transcription with Faster Whisper</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="font-sans bg-gray-100 text-gray-800 max-w-2xl mx-auto p-5">
+<h1 class="text-2xl font-bold mb-5">Real-time Audio Transcription with Faster Whisper</h1>
+<div class="mb-4">
+    <button id="startButton" class="bg-blue-500 text-white font-semibold py-2 px-4 rounded hover:bg-blue-600 transition">Start Recording</button>
+    <button id="stopButton" class="bg-red-500 text-white font-semibold py-2 px-4 rounded hover:bg-red-600 transition" disabled>Stop Recording</button>
+</div>
+<div id="transcription" class="mt-5 border border-gray-300 p-3 min-h-[100px] bg-white rounded shadow"></div>
+
+<script>
+    const SERVER_URL = "ws://44.223.38.146:8000/ws";  // Replace with your server's address
+    let websocket;
+    let audioContext;
+    let mediaStreamSource;
+    let processor;
+
+    const startButton = document.getElementById('startButton');
+    const stopButton = document.getElementById('stopButton');
+    const transcriptionDiv = document.getElementById('transcription');
+
+    startButton.addEventListener('click', startRecording);
+    stopButton.addEventListener('click', stopRecording);
+
+    async function startRecording() {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            audioContext = new AudioContext({ sampleRate: 16000 });
+            mediaStreamSource = audioContext.createMediaStreamSource(stream);
+
+            websocket = new WebSocket(SERVER_URL);
+
+            websocket.onopen = () => {
+                console.log('WebSocket connection established');
+                setupAudioProcessor();
+            };
+
+            websocket.onmessage = (event) => {
+                transcriptionDiv.textContent += event.data + " ";
+            };
+
+            startButton.disabled = true;
+            stopButton.disabled = false;
+        } catch (err) {
+            console.error('Error accessing microphone:', err);
+        }
+    }
+
+    function setupAudioProcessor() {
+        processor = audioContext.createScriptProcessor(4096, 1, 1);
+        mediaStreamSource.connect(processor);
+        processor.connect(audioContext.destination);
+
+        processor.onaudioprocess = (e) => {
+            const inputData = e.inputBuffer.getChannelData(0);
+            websocket.send(inputData.buffer);
+        };
+    }
+
+    function stopRecording() {
+        if (processor) {
+            processor.disconnect();
+            mediaStreamSource.disconnect();
+        }
+        if (audioContext) {
+            audioContext.close();
+        }
+        if (websocket) {
+            websocket.send(new Uint8Array([69, 78, 68]).buffer); // Send "END" signal
+            websocket.close();
+        }
+        startButton.disabled = false;
+        stopButton.disabled = true;
+    }
+</script>
+</body>
+</html>
+
+
